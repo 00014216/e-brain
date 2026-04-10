@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}Entities — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Entities</h2>
+  <p class="page-sub">People, companies, technologies and concepts extracted from your memories.</p>
+</div>
+
+<div class="entities-toolbar">
+  <div class="type-tabs" id="entityTypeTabs">
+    <button class="type-tab active" data-type="">All</button>
+    {% for t in types %}
+    <button class="type-tab" data-type="{{ t }}">{{ t.capitalize() }}</button>
+    {% endfor %}
+  </div>
+  <input type="text" id="entitySearch" placeholder="Search entities..." class="filter-input">
+</div>
+
+{% if entities %}
+<div class="entities-grid" id="entitiesGrid">
+  {% for e in entities %}
+  <div class="entity-card" data-type="{{ e.entity_type }}" data-name="{{ e.name.lower() }}"
+       onclick="loadEntityMemories('{{ e.id }}', '{{ e.name }}', '{{ e.entity_type }}')">
+    <div class="entity-type-badge entity-{{ e.entity_type }}">{{ e.entity_type }}</div>
+    <div class="entity-name">{{ e.name }}</div>
+    <div class="entity-count">{{ e.mention_count }} mention{{ 's' if e.mention_count != 1 }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i data-lucide="link"></i>
+  <p>No entities yet. They are extracted automatically when you capture memories.</p>
+</div>
+{% endif %}
+
+<div id="entityMemoriesWrap" class="hidden">
+  <div class="tag-memories-header">
+    <h3 id="entityMemoriesTitle">Memories</h3>
+    <button onclick="closeEntityView()" class="btn-ghost-sm">Close</button>
+  </div>
+  <div id="entityMemoriesGrid" class="memories-grid"></div>
+</div>
+
+<div id="memModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.type-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.type-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const type = tab.dataset.type;
+    document.querySelectorAll('.entity-card').forEach(card => {
+      card.style.display = (!type || card.dataset.type === type) ? '' : 'none';
+    });
+  });
+});
+
+document.getElementById('entitySearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.entity-card').forEach(card => {
+    card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+  });
+});
+
+async function loadEntityMemories(id, name, type) {
+  const wrap  = document.getElementById('entityMemoriesWrap');
+  const grid  = document.getElementById('entityMemoriesGrid');
+  const title = document.getElementById('entityMemoriesTitle');
+  title.textContent = `Memories mentioning "${name}"`;
+  grid.innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+  wrap.classList.remove('hidden');
+  lucide.createIcons();
+  wrap.scrollIntoView({ behavior: 'smooth' });
+
+  const r    = await fetch(`/api/entities/${id}/memories`);
+  const data = await r.json();
+  const mems = data.memories || [];
+
+  grid.innerHTML = '';
+  if (!mems.length) {
+    grid.innerHTML = '<p class="empty-hint">No memories found for this entity.</p>';
+    return;
+  }
+  mems.forEach(m => grid.insertAdjacentHTML('beforeend', memCard(m)));
+  lucide.createIcons();
+}
+
+function closeEntityView() { document.getElementById('entityMemoriesWrap').classList.add('hidden'); }
+
+function memCard(m) {
+  return `<div class="memory-card" onclick="openModal('${m.id}')">
+    <div class="card-type type-${m.memory_type}">${m.memory_type}</div>
+    <div class="card-title">${m.title||'Untitled'}</div>
+    <div class="card-summary">${(m.ai_summary||m.content||'').slice(0,120)}...</div>
+    <div class="card-date">${(m.created_at||'').slice(0,10)}</div>
+  </div>`;
+}
+
+async function openModal(id) {
+  document.getElementById('memModal').classList.remove('hidden');
+  document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+  lucide.createIcons();
+  const r = await fetch(`/api/memories/${id}`);
+  const { memory: m } = await r.json();
+  const tags = (m.memory_hashtags||[]).map(mh=>mh.hashtags?`<span class="tag">#${mh.hashtags.display_form}</span>`:'').join('');
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-type-badge type-${m.memory_type}">${m.memory_type}</div>
+    <h3 class="modal-title">${m.title||'Untitled'}</h3>
+    <div class="modal-date">${(m.created_at||'').slice(0,10)}</div>
+    ${m.ai_summary?`<div class="modal-section"><strong>Summary</strong><p>${m.ai_summary}</p></div>`:''}
+    <div class="modal-section"><strong>Content</strong><p>${(m.content||'').replace(/\n/g,'<br>')}</p></div>
+    ${tags?`<div class="modal-section"><strong>Hashtags</strong><div class="modal-tags">${tags}</div></div>`:''}
+    <div class="modal-footer"><a href="/memory/${m.id}" class="btn-sm">Full view</a></div>`;
+  lucide.createIcons();
+}
+function closeModal() { document.getElementById('memModal').classList.add('hidden'); }
+</script>
+{% endblock %}

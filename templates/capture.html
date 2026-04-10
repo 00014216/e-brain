@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% block title %}Capture — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Capture a Memory</h2>
+  <p class="page-sub">Text, image, URL, screenshot — anything you want to remember</p>
+</div>
+
+<div class="capture-layout">
+  <div class="capture-form-wrap">
+    <form id="captureForm" enctype="multipart/form-data">
+
+      <div class="type-selector">
+        <button type="button" class="type-btn active" data-type="text">
+          <i data-lucide="type"></i> Text / Note
+        </button>
+        <button type="button" class="type-btn" data-type="url">
+          <i data-lucide="link-2"></i> URL
+        </button>
+        <button type="button" class="type-btn" data-type="image">
+          <i data-lucide="image"></i> Image
+        </button>
+        <button type="button" class="type-btn" data-type="screenshot">
+          <i data-lucide="monitor"></i> Screenshot
+        </button>
+      </div>
+
+      <input type="hidden" name="memory_type" id="memoryTypeInput" value="text">
+
+      <div id="textSection">
+        <div class="form-group">
+          <label>Your thought, idea or note</label>
+          <textarea name="content" id="contentArea" rows="7"
+            placeholder="Type or paste anything — an idea, insight, article excerpt, quote, thought..."></textarea>
+        </div>
+      </div>
+
+      <div id="urlSection" class="hidden">
+        <div class="form-group">
+          <label>URL to capture</label>
+          <input type="url" name="source_url" id="urlInput"
+            placeholder="https://example.com/article-or-post">
+        </div>
+        <div class="form-group">
+          <label>Your note about it <span class="optional">(optional)</span></label>
+          <textarea name="content" id="urlContent" rows="3"
+            placeholder="What struck you about this link? Your thoughts..."></textarea>
+        </div>
+      </div>
+
+      <div id="imageSection" class="hidden">
+        <div class="form-group">
+          <label>Upload image or screenshot</label>
+          <div class="file-drop" id="fileDrop">
+            <i data-lucide="upload-cloud"></i>
+            <span>Drop image here or click to browse</span>
+            <input type="file" name="image" id="imageInput" accept="image/*">
+          </div>
+          <div id="imagePreview" class="image-preview hidden"></div>
+        </div>
+        <div class="form-group">
+          <label>Your note about this image <span class="optional">(optional)</span></label>
+          <textarea name="user_note" rows="2"
+            placeholder="What is this image about? Any context..."></textarea>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary btn-capture" id="captureBtn">
+        <i data-lucide="zap"></i> Capture &amp; Analyze
+      </button>
+    </form>
+
+    <div id="captureResult" class="capture-result hidden"></div>
+  </div>
+
+  <div class="recent-captures">
+    <h3>Recent Captures</h3>
+    {% if recent %}
+      {% for mem in recent %}
+      <a href="{{ url_for('memories.memory_detail_page', memory_id=mem.id) }}" class="recent-card">
+        <div class="recent-type type-{{ mem.memory_type }}">{{ mem.memory_type }}</div>
+        <div class="recent-title">{{ mem.title or mem.content[:60] }}</div>
+        <div class="recent-date">{{ mem.created_at[:10] }}</div>
+      </a>
+      {% endfor %}
+    {% else %}
+      <p class="empty-hint">No memories yet. Capture your first one!</p>
+    {% endif %}
+    <a href="{{ url_for('memories.memories_page') }}" class="view-all-link">View all memories →</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const typeButtons = document.querySelectorAll('.type-btn');
+const sections = {
+  text:       document.getElementById('textSection'),
+  url:        document.getElementById('urlSection'),
+  image:      document.getElementById('imageSection'),
+  screenshot: document.getElementById('imageSection'),
+};
+const typeInput = document.getElementById('memoryTypeInput');
+
+typeButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    typeButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.type;
+    typeInput.value = t;
+    Object.values(sections).forEach(s => s && s.classList.add('hidden'));
+    const active = sections[t];
+    if (active) active.classList.remove('hidden');
+    lucide.createIcons();
+  });
+});
+
+const fileDrop   = document.getElementById('fileDrop');
+const imageInput = document.getElementById('imageInput');
+const imgPreview = document.getElementById('imagePreview');
+
+fileDrop.addEventListener('click', () => imageInput.click());
+fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+fileDrop.addEventListener('dragleave', ()  => fileDrop.classList.remove('drag-over'));
+fileDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  fileDrop.classList.remove('drag-over');
+  const dt = e.dataTransfer;
+  if (dt.files.length) handleFile(dt.files[0]);
+});
+imageInput.addEventListener('change', () => { if (imageInput.files[0]) handleFile(imageInput.files[0]); });
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    imgPreview.innerHTML = `<img src="${ev.target.result}" alt="Preview">`;
+    imgPreview.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  imageInput.files = dt.files;
+}
+
+document.getElementById('captureForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('captureBtn');
+  const res = document.getElementById('captureResult');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2"></i> Analyzing...';
+  lucide.createIcons();
+  res.className = 'capture-result hidden';
+
+  const fd = new FormData(e.target);
+
+  try {
+    const r    = await fetch('/api/capture', { method: 'POST', body: fd });
+    const data = await r.json();
+
+    if (data.success) {
+      const an = data.analysis || {};
+      const tags = (an.hashtags || []).slice(0, 12).map(t =>
+        `<span class="tag">#${t}</span>`).join('');
+      const insights = (an.key_insights || []).map(i =>
+        `<li>${i}</li>`).join('');
+      const actions = (an.action_items || []).filter(Boolean).map(a =>
+        `<li>${a}</li>`).join('');
+
+      res.innerHTML = `
+        <div class="result-success">
+          <div class="result-header">
+            <i data-lucide="check-circle-2"></i>
+            <strong>Memory captured!</strong>
+          </div>
+          <h4>${an.title || 'Untitled'}</h4>
+          <p class="result-summary">${an.summary || ''}</p>
+          <div class="result-tags">${tags}</div>
+          ${insights ? `<div class="result-section"><strong>Key insights</strong><ul>${insights}</ul></div>` : ''}
+          ${actions  ? `<div class="result-section"><strong>Action items</strong><ul>${actions}</ul></div>`  : ''}
+          <div class="result-actions">
+            <a href="/memories" class="btn-sm">View all memories</a>
+            <button class="btn-sm btn-ghost" onclick="resetForm()">Capture another</button>
+          </div>
+        </div>`;
+      res.classList.remove('hidden');
+      lucide.createIcons();
+      e.target.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      res.innerHTML = `<div class="result-error"><i data-lucide="alert-circle"></i> ${data.error || 'Failed to capture.'}</div>`;
+      res.classList.remove('hidden');
+      lucide.createIcons();
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="result-error"><i data-lucide="alert-circle"></i> Network error. Please try again.</div>`;
+    res.classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i data-lucide="zap"></i> Capture & Analyze';
+  lucide.createIcons();
+});
+
+function resetForm() {
+  document.getElementById('captureForm').reset();
+  document.getElementById('captureResult').classList.add('hidden');
+  document.getElementById('imagePreview').classList.add('hidden');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}AI Search — e-brain{% endblock %}
+
+{% block content %}
+<div class="ai-page">
+
+  <!-- HERO + SEARCH BOX -->
+  <div class="ai-hero" id="aiHero">
+    <div class="ai-hero-icon">
+      <i data-lucide="sparkles"></i>
+    </div>
+    <h1>Ask anything</h1>
+    <p>Vague, specific, by date, by feeling — the AI finds the right memory.</p>
+  </div>
+
+  <div class="ai-input-wrap">
+    <textarea id="aiQuery" rows="3"
+      placeholder="e.g. that VC from the space video I watched last month..."></textarea>
+    <div class="ai-input-actions">
+      <span class="ai-hint">Ctrl+Enter to search</span>
+      <button id="aiSearchBtn" class="btn-primary">
+        <i data-lucide="sparkles"></i> Search
+      </button>
+    </div>
+  </div>
+
+  <div class="ai-pills-row">
+    <span class="ai-pills-label">Try</span>
+    <button class="example-pill" onclick="setQuery(this)">that VC I found in a deep tech video</button>
+    <button class="example-pill" onclick="setQuery(this)">startup ideas from last month</button>
+    <button class="example-pill" onclick="setQuery(this)">something about space and magnets</button>
+    <button class="example-pill" onclick="setQuery(this)">notes when I was inspired</button>
+    <button class="example-pill" onclick="setQuery(this)">people I wanted to contact</button>
+  </div>
+
+  <!-- SEARCHING STATE -->
+  <div id="aiSearching" class="ai-searching hidden">
+    <div class="ai-searching-spinner"></div>
+    <p>Reading all your memories and finding the best matches...</p>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="aiResultsSection" class="ai-results-section hidden">
+
+    <div class="ai-explanation-bar">
+      <div class="ai-explanation-icon">
+        <i data-lucide="brain-circuit"></i>
+      </div>
+      <div class="ai-explanation-text">
+        <p id="aiExplanationText"></p>
+        <div class="conf-row">
+          <span id="aiConfBadge" class="conf-badge"></span>
+          <div id="aiTermChips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-results-count" id="aiResultsCount"></div>
+    <div id="aiResults" class="memories-grid"></div>
+
+  </div>
+
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="memModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setQuery(btn) {
+  document.getElementById('aiQuery').value = btn.textContent.trim();
+  document.getElementById('aiQuery').focus();
+}
+
+document.getElementById('aiSearchBtn').addEventListener('click', runSearch);
+document.getElementById('aiQuery').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runSearch();
+});
+
+async function runSearch() {
+  const query = document.getElementById('aiQuery').value.trim();
+  if (!query) { document.getElementById('aiQuery').focus(); return; }
+
+  const btn      = document.getElementById('aiSearchBtn');
+  const searching = document.getElementById('aiSearching');
+  const results   = document.getElementById('aiResultsSection');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2"></i> Searching...';
+  lucide.createIcons();
+  searching.classList.remove('hidden');
+  results.classList.add('hidden');
+
+  try {
+    const r    = await fetch('/api/ai/search', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ query })
+    });
+    const data = await r.json();
+    const mems = data.memories || [];
+
+    searching.classList.add('hidden');
+
+    const confColors = { high: '#10b981', medium: '#f59e0b', low: '#6b7280' };
+    const conf = data.confidence || 'low';
+
+    document.getElementById('aiExplanationText').textContent = data.explanation || 'Here are the most relevant memories.';
+    const badge = document.getElementById('aiConfBadge');
+    badge.textContent = conf + ' confidence';
+    badge.style.background = confColors[conf];
+
+    const chips = (data.params?.keywords || []).map(k => `<span class="term-chip">${k}</span>`).join('');
+    document.getElementById('aiTermChips').innerHTML = chips;
+
+    document.getElementById('aiResultsCount').textContent = mems.length
+      ? `Found ${mems.length} relevant ${mems.length === 1 ? 'memory' : 'memories'}`
+      : 'No matching memories found.';
+
+    const grid = document.getElementById('aiResults');
+    grid.innerHTML = '';
+    if (mems.length === 0) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <i data-lucide="search-x"></i>
+        <p>No matches found. Try different words or be more vague.</p>
+      </div>`;
+    } else {
+      mems.forEach((m, i) => grid.insertAdjacentHTML('beforeend', memCard(m, i + 1)));
+    }
+
+    results.classList.remove('hidden');
+    lucide.createIcons();
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  } catch (err) {
+    searching.classList.add('hidden');
+    document.getElementById('aiExplanationText').textContent = 'Search failed. Check your API key in Settings.';
+    document.getElementById('aiConfBadge').textContent = 'error';
+    document.getElementById('aiConfBadge').style.background = '#ef4444';
+    document.getElementById('aiResults').innerHTML = '';
+    document.getElementById('aiResultsCount').textContent = '';
+    results.classList.remove('hidden');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i data-lucide="sparkles"></i> Search';
+  lucide.createIcons();
+}
+
+function memCard(m, rank) {
+  const tags = (m.memory_hashtags || []).slice(0, 6)
+    .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>` : '').join('');
+  const icons = { text:'type', note:'sticky-note', url:'link-2', image:'image', screenshot:'monitor' };
+  const icon  = icons[m.memory_type] || 'file';
+  const date  = (m.created_at || '').slice(0, 10);
+
+  return `
+    <div class="memory-card" onclick="openModal('${m.id}')">
+      <div class="card-header">
+        <span class="rank-badge">#${rank}</span>
+        <span class="card-type type-${m.memory_type}"><i data-lucide="${icon}"></i>${m.memory_type}</span>
+      </div>
+      <div class="card-title">${m.title || 'Untitled'}</div>
+      <div class="card-summary">${(m.ai_summary || m.content || '').slice(0, 150)}...</div>
+      <div class="card-tags">${tags}</div>
+      <div class="card-date">${date}</div>
+    </div>`;
+}
+
+async function openModal(id) {
+  document.getElementById('memModal').classList.remove('hidden');
+  document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+  lucide.createIcons();
+
+  const { memory: m } = await fetch(`/api/memories/${id}`).then(r => r.json());
+
+  const tags     = (m.memory_hashtags||[]).map(mh => mh.hashtags ? `<span class="tag">#${mh.hashtags.display_form}</span>` : '').join('');
+  const entities = (m.memory_entities||[]).map(me => me.entities ? `<span class="entity-chip entity-${me.entities.entity_type}">${me.entities.name}</span>` : '').join('');
+  const insights = (m.key_insights||[]).map(i => `<li>${i}</li>`).join('');
+  const actions  = (m.action_items||[]).filter(Boolean).map(a => `<li>${a}</li>`).join('');
+  const urlHtml  = m.source_url ? `<a class="modal-url" href="${m.source_url}" target="_blank"><i data-lucide="external-link"></i>${m.source_url.slice(0,60)}...</a>` : '';
+
+  document.getElementById('modalContent').innerHTML = `
+    <span class="modal-type-badge type-${m.memory_type}">${m.memory_type}</span>
+    <h3 class="modal-title">${m.title || 'Untitled'}</h3>
+    <div class="modal-date">${(m.created_at||'').slice(0,16).replace('T',' ')}</div>
+    ${urlHtml}
+    ${m.ai_summary ? `<div class="modal-section"><strong>AI Summary</strong><p>${m.ai_summary}</p></div>` : ''}
+    <div class="modal-section"><strong>Content</strong><p class="modal-content-text">${(m.content||'').replace(/\n/g,'<br>')}</p></div>
+    ${insights ? `<div class="modal-section"><strong>Key Insights</strong><ul>${insights}</ul></div>` : ''}
+    ${actions  ? `<div class="modal-section"><strong>Action Items</strong><ul>${actions}</ul></div>` : ''}
+    ${tags     ? `<div class="modal-section"><strong>Hashtags</strong><div class="modal-tags">${tags}</div></div>` : ''}
+    ${entities ? `<div class="modal-section"><strong>Entities</strong><div class="modal-entities">${entities}</div></div>` : ''}
+    <div class="modal-footer"><a href="/memory/${m.id}" class="btn-sm">Full view</a></div>`;
+  lucide.createIcons();
+}
+
+function closeModal() { document.getElementById('memModal').classList.add('hidden'); }
+</script>
+{% endblock %}

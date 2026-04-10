@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}{{ memory.title or 'Memory' }} — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{{ url_for('memories.memories_page') }}" class="back-link">
+    <i data-lucide="arrow-left"></i> Back to Memories
+  </a>
+</div>
+
+<div class="detail-wrap">
+
+  <div class="detail-main">
+    <div class="detail-meta">
+      <span class="card-type type-{{ memory.memory_type }}">{{ memory.memory_type }}</span>
+      <span class="detail-date">{{ memory.created_at[:16].replace('T', ' ') if memory.created_at else '' }}</span>
+      {% if memory.sentiment %}
+      <span class="sentiment-pill sent-{{ memory.sentiment }}">{{ memory.sentiment }}</span>
+      {% endif %}
+    </div>
+
+    <h1 class="detail-title">{{ memory.title or 'Untitled' }}</h1>
+
+    {% if memory.source_url %}
+    <a class="detail-url" href="{{ memory.source_url }}" target="_blank">
+      <i data-lucide="external-link"></i> {{ memory.source_url[:80] }}...
+    </a>
+    {% endif %}
+
+    {% if memory.image_url %}
+    <div class="detail-image">
+      <img src="{{ memory.image_url }}" alt="Memory image">
+    </div>
+    {% endif %}
+
+    {% if memory.ai_summary %}
+    <div class="detail-section">
+      <div class="section-label">AI Summary</div>
+      <div class="detail-summary">{{ memory.ai_summary }}</div>
+    </div>
+    {% endif %}
+
+    <div class="detail-section">
+      <div class="section-label">Content</div>
+      <div class="detail-content">{{ memory.content | replace('\n', '<br>') | safe }}</div>
+    </div>
+
+    {% if memory.key_insights %}
+    <div class="detail-section">
+      <div class="section-label">Key Insights</div>
+      <ul class="detail-list">
+        {% for insight in memory.key_insights %}
+        <li>{{ insight }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if memory.action_items and memory.action_items | select | list %}
+    <div class="detail-section">
+      <div class="section-label">Action Items</div>
+      <ul class="detail-list action-list">
+        {% for item in memory.action_items %}
+        {% if item %}
+        <li>{{ item }}</li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="detail-sidebar">
+
+    {% if memory.memory_hashtags %}
+    <div class="sidebar-section">
+      <div class="section-label">Hashtags</div>
+      <div class="detail-tags">
+        {% for mh in memory.memory_hashtags %}
+        {% if mh.hashtags %}
+        <a href="{{ url_for('hashtags.hashtags_page') }}?tag={{ mh.hashtags.normalized_form }}"
+           class="tag">#{{ mh.hashtags.display_form }}</a>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if memory.memory_entities %}
+    <div class="sidebar-section">
+      <div class="section-label">Entities</div>
+      <div class="detail-entities">
+        {% for me in memory.memory_entities %}
+        {% if me.entities %}
+        <div class="entity-chip entity-{{ me.entities.entity_type }}">
+          <span class="entity-type-label">{{ me.entities.entity_type }}</span>
+          {{ me.entities.name }}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="sidebar-section">
+      <button class="btn-danger-outline btn-full"
+        onclick="if(confirm('Delete this memory?')){fetch('/api/memories/{{ memory.id }}',{method:'DELETE'}).then(()=>window.location='/memories')}">
+        <i data-lucide="trash-2"></i> Delete Memory
+      </button>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

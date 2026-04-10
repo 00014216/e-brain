@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}Settings — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Settings</h2>
+  <p class="page-sub">Configure your account and AI preferences.</p>
+</div>
+
+<div class="settings-wrap">
+  <form method="POST" class="settings-form">
+
+    <div class="settings-section">
+      <h3>Account</h3>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="text" value="{{ email }}" disabled class="input-disabled">
+      </div>
+      <div class="form-group">
+        <label>Display Name</label>
+        <input type="text" name="display_name"
+          value="{{ settings.get('display_name', '') }}"
+          placeholder="Your name">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>AI Configuration</h3>
+      <p class="settings-info">
+        e-brain uses Claude AI by default to analyze and search memories. You can provide
+        your own API keys for better rate limits or to use OpenAI models instead.
+      </p>
+      <div class="form-group">
+        <label>Anthropic API Key <span class="optional">(optional)</span></label>
+        <input type="password" name="anthropic_api_key"
+          value="{{ settings.get('anthropic_api_key', '') }}"
+          placeholder="sk-ant-...">
+        <span class="form-hint">Used for memory analysis and AI search. Leave blank to use the app default.</span>
+      </div>
+      <div class="form-group">
+        <label>OpenAI API Key <span class="optional">(optional)</span></label>
+        <input type="password" name="openai_api_key"
+          value="{{ settings.get('openai_api_key', '') }}"
+          placeholder="sk-...">
+        <span class="form-hint">Stored securely for future OpenAI-powered features.</span>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-primary">Save Settings</button>
+  </form>
+
+  <div class="settings-section danger-zone">
+    <h3>Account</h3>
+    <a href="{{ url_for('auth.logout') }}" class="btn-danger-outline">Sign Out</a>
+  </div>
+</div>
+{% endblock %}

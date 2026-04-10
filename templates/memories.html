@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block title %}Memories — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Memories</h2>
+  <p class="page-sub">Everything you have captured, organized and searchable</p>
+</div>
+
+<div class="memories-toolbar">
+  <div class="search-bar">
+    <i data-lucide="search"></i>
+    <input type="text" id="searchInput" placeholder="Search by keyword..." autocomplete="off">
+  </div>
+
+  <div class="filter-row">
+    <select id="typeFilter">
+      <option value="">All types</option>
+      <option value="text">Text</option>
+      <option value="note">Note</option>
+      <option value="url">URL</option>
+      <option value="image">Image</option>
+      <option value="screenshot">Screenshot</option>
+    </select>
+
+    <select id="hashtagFilter">
+      <option value="">All hashtags</option>
+      {% for ht in hashtags %}
+      <option value="{{ ht.normalized_form }}">#{{ ht.display_form }} ({{ ht.count }})</option>
+      {% endfor %}
+    </select>
+
+    <input type="date" id="dateFrom" title="From date">
+    <input type="date" id="dateTo"   title="To date">
+    <button id="clearFilters" class="btn-ghost-sm">Clear</button>
+  </div>
+</div>
+
+<div id="memoryCount" class="memory-count"></div>
+<div id="memoriesGrid" class="memories-grid"></div>
+<div id="loadMoreWrap" class="load-more-wrap hidden">
+  <button id="loadMoreBtn" class="btn-ghost">Load more</button>
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="memModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let offset = 0, loading = false, allLoaded = false;
+const LIMIT = 20;
+
+async function loadMemories(reset = false) {
+  if (loading) return;
+  loading = true;
+  if (reset) { offset = 0; allLoaded = false; document.getElementById('memoriesGrid').innerHTML = ''; }
+
+  const params = new URLSearchParams({
+    search:   document.getElementById('searchInput').value.trim(),
+    type:     document.getElementById('typeFilter').value,
+    hashtag:  document.getElementById('hashtagFilter').value,
+    date_from:document.getElementById('dateFrom').value,
+    date_to:  document.getElementById('dateTo').value,
+    limit:    LIMIT,
+    offset:   offset,
+  });
+
+  const r    = await fetch('/api/memories?' + params);
+  const data = await r.json();
+  const mems = data.memories || [];
+
+  const grid = document.getElementById('memoriesGrid');
+
+  if (reset && mems.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><i data-lucide="brain"></i><p>No memories found.</p></div>';
+    document.getElementById('memoryCount').textContent = '';
+    lucide.createIcons();
+    loading = false;
+    return;
+  }
+
+  if (reset) {
+    document.getElementById('memoryCount').textContent = `Showing ${mems.length} memories`;
+  }
+
+  mems.forEach(m => grid.insertAdjacentHTML('beforeend', memoryCard(m)));
+  lucide.createIcons();
+
+  offset += mems.length;
+  if (mems.length < LIMIT) {
+    allLoaded = true;
+    document.getElementById('loadMoreWrap').classList.add('hidden');
+  } else {
+    document.getElementById('loadMoreWrap').classList.remove('hidden');
+  }
+
+  loading = false;
+}
+
+function memoryCard(m) {
+  const tags = (m.memory_hashtags || [])
+    .slice(0, 5)
+    .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>` : '')
+    .join('');
+
+  const sentimentClass = { positive: 'sent-pos', negative: 'sent-neg', neutral: 'sent-neu', mixed: 'sent-mix' }[m.sentiment] || 'sent-neu';
+  const typeIcon = { text: 'type', note: 'sticky-note', url: 'link-2', image: 'image', screenshot: 'monitor' }[m.memory_type] || 'file';
+
+  const img = m.image_url ? `<div class="card-img"><img src="${m.image_url}" alt=""></div>` : '';
+
+  return `
+    <div class="memory-card" onclick="openModal('${m.id}')">
+      <div class="card-header">
+        <span class="card-type type-${m.memory_type}"><i data-lucide="${typeIcon}"></i> ${m.memory_type}</span>
+        <span class="card-sentiment ${sentimentClass}"></span>
+        <button class="card-del" onclick="event.stopPropagation();deleteMem('${m.id}',this)" title="Delete">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+      ${img}
+      <div class="card-title">${m.title || 'Untitled'}</div>
+      <div class="card-summary">${(m.ai_summary || m.content || '').slice(0, 140)}...</div>
+      <div class="card-tags">${tags}</div>
+      <div class="card-date">${m.created_at ? m.created_at.slice(0,10) : ''}</div>
+    </div>`;
+}
+
+async function openModal(id) {
+  document.getElementById('memModal').classList.remove('hidden');
+  document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+  lucide.createIcons();
+
+  const r    = await fetch(`/api/memories/${id}`);
+  const data = await r.json();
+  const m    = data.memory;
+
+  const tags = (m.memory_hashtags || [])
+    .map(mh => mh.hashtags ? `<span class="tag">#${mh.hashtags.display_form}</span>` : '').join('');
+
+  const entities = (m.memory_entities || [])
+    .map(me => me.entities ? `<span class="entity-chip entity-${me.entities.entity_type}">${me.entities.name}</span>` : '').join('');
+
+  const insights = (m.key_insights || []).map(i => `<li>${i}</li>`).join('');
+  const actions  = (m.action_items  || []).filter(Boolean).map(a => `<li>${a}</li>`).join('');
+  const imgHtml  = m.image_url ? `<img class="modal-img" src="${m.image_url}" alt="">` : '';
+  const urlHtml  = m.source_url ? `<a class="modal-url" href="${m.source_url}" target="_blank">${m.source_url}</a>` : '';
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-type-badge type-${m.memory_type}">${m.memory_type}</div>
+    <h3 class="modal-title">${m.title || 'Untitled'}</h3>
+    <div class="modal-date">${m.created_at ? m.created_at.slice(0,16).replace('T',' ') : ''}</div>
+    ${urlHtml}
+    ${imgHtml}
+    ${m.ai_summary ? `<div class="modal-section"><strong>AI Summary</strong><p>${m.ai_summary}</p></div>` : ''}
+    <div class="modal-section"><strong>Content</strong><p class="modal-content-text">${(m.content||'').replace(/\n/g,'<br>')}</p></div>
+    ${insights ? `<div class="modal-section"><strong>Key Insights</strong><ul>${insights}</ul></div>` : ''}
+    ${actions  ? `<div class="modal-section"><strong>Action Items</strong><ul>${actions}</ul></div>`  : ''}
+    ${tags     ? `<div class="modal-section"><strong>Hashtags</strong><div class="modal-tags">${tags}</div></div>` : ''}
+    ${entities ? `<div class="modal-section"><strong>Entities</strong><div class="modal-entities">${entities}</div></div>` : ''}
+    <div class="modal-footer">
+      <a href="/memory/${m.id}" class="btn-sm">Full view</a>
+      <button class="btn-sm btn-danger" onclick="deleteMem('${m.id}', null, true)">Delete</button>
+    </div>`;
+  lucide.createIcons();
+}
+
+function closeModal() {
+  document.getElementById('memModal').classList.add('hidden');
+}
+
+async function deleteMem(id, el, fromModal) {
+  if (!confirm('Delete this memory permanently?')) return;
+  const r = await fetch(`/api/memories/${id}`, { method: 'DELETE' });
+  if (r.ok) {
+    if (fromModal) closeModal();
+    loadMemories(true);
+  }
+}
+
+let debounce;
+['searchInput','typeFilter','hashtagFilter','dateFrom','dateTo'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => loadMemories(true), 400);
+  });
+});
+
+document.getElementById('clearFilters').addEventListener('click', () => {
+  ['searchInput','typeFilter','hashtagFilter','dateFrom','dateTo'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  loadMemories(true);
+});
+
+document.getElementById('loadMoreBtn').addEventListener('click', () => loadMemories(false));
+
+loadMemories(true);
+</script>
+{% endblock %}

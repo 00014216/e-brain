@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}Analytics — e-brain{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Analytics</h2>
+  <p class="page-sub">Patterns, insights and activity across all your memories.</p>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-number">{{ data.total }}</div>
+    <div class="stat-label">Total Memories</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">{{ data.recent_7_days }}</div>
+    <div class="stat-label">Last 7 Days</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">{{ data.recent_30_days }}</div>
+    <div class="stat-label">Last 30 Days</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">{{ data.top_hashtags | length }}</div>
+    <div class="stat-label">Unique Hashtags</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">{{ data.top_entities | length }}</div>
+    <div class="stat-label">Entities Tracked</div>
+  </div>
+</div>
+
+<div class="analytics-grid">
+
+  <div class="analytics-card">
+    <h3>Memory Types</h3>
+    <div class="type-bars">
+      {% set total = data.total if data.total > 0 else 1 %}
+      {% for type, count in data.type_counts.items() %}
+      <div class="type-bar-row">
+        <span class="type-label">{{ type }}</span>
+        <div class="bar-track">
+          <div class="bar-fill type-{{ type }}" style="width:{{ ((count / total) * 100) | round }}%"></div>
+        </div>
+        <span class="bar-count">{{ count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="analytics-card">
+    <h3>Sentiment Breakdown</h3>
+    <div class="type-bars">
+      {% set total = data.total if data.total > 0 else 1 %}
+      {% for sent, count in data.sentiment_counts.items() %}
+      <div class="type-bar-row">
+        <span class="type-label">{{ sent }}</span>
+        <div class="bar-track">
+          <div class="bar-fill sent-bar-{{ sent }}" style="width:{{ ((count / total) * 100) | round }}%"></div>
+        </div>
+        <span class="bar-count">{{ count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="analytics-card full-width">
+    <h3>Daily Activity (last 30 days)</h3>
+    <div class="activity-chart" id="activityChart">
+      {% for day, count in data.daily_activity %}
+      <div class="activity-col" title="{{ day }}: {{ count }} memories">
+        <div class="activity-bar" style="height: {{ [count * 12, 80] | min }}px"></div>
+        <span class="activity-day">{{ day[5:] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="analytics-card">
+    <h3>Top Hashtags</h3>
+    {% if data.top_hashtags %}
+    <div class="top-list">
+      {% for ht in data.top_hashtags %}
+      <a href="{{ url_for('hashtags.hashtags_page') }}" class="top-list-item">
+        <span class="top-item-name">#{{ ht.display_form }}</span>
+        <span class="top-item-count">{{ ht.count }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-hint">No hashtags yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="analytics-card">
+    <h3>Top Entities</h3>
+    {% if data.top_entities %}
+    <div class="top-list">
+      {% for e in data.top_entities %}
+      <div class="top-list-item">
+        <span class="entity-type-dot entity-{{ e.entity_type }}"></span>
+        <span class="top-item-name">{{ e.name }}</span>
+        <span class="top-item-count">{{ e.mention_count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-hint">No entities yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
