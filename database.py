@@ -1,5 +1,6 @@
 
 import re
+import json
 from datetime import datetime, timedelta
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_SERVICE_KEY
@@ -35,7 +36,7 @@ def create_memory(user_id, data):
         'image_url':    data.get('image_url', ''),
         'image_path':   data.get('image_path', ''),
         'ai_summary':   data.get('ai_summary', ''),
-        'ai_analysis':  data.get('ai_analysis', ''),
+        'ai_analysis':  json.dumps(data['ai_analysis']) if isinstance(data.get('ai_analysis'), dict) else data.get('ai_analysis', ''),
         'sentiment':    data.get('sentiment', 'neutral'),
         'key_insights': data.get('key_insights', []),
         'action_items': data.get('action_items', []),

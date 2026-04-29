@@ -1,4 +1,5 @@
 
+import json
 from flask import Blueprint, render_template, request, jsonify, session
 from utils import login_required
 from database import get_memories, get_memory, delete_memory, get_hashtags_for_user
@@ -93,4 +94,9 @@ def memory_detail_page(memory_id):
     if not mem:
         from flask import abort
         abort(404)
+    if isinstance(mem.get('ai_analysis'), str) and mem['ai_analysis']:
+        try:
+            mem['ai_analysis'] = json.loads(mem['ai_analysis'])
+        except Exception:
+            mem['ai_analysis'] = {}
     return render_template('memory_detail.html', memory=mem)
