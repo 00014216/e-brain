@@ -58,7 +58,25 @@ def api_add_alias():
     alias     = normalize_hashtag(body.get('alias', ''))
     if not canonical or not alias:
         return jsonify({'error': 'canonical and alias required'}), 400
+    from database import add_hashtag_alias
     ok = add_hashtag_alias(canonical, alias)
     if ok:
         return jsonify({'success': True})
     return jsonify({'error': 'Could not add alias. Make sure canonical hashtag exists.'}), 400
+
+
+@hashtags_bp.route('/api/hashtags/edit', methods=['POST'])
+@login_required
+def api_edit_hashtag():
+    uid       = session['user_id']
+    body      = request.get_json() or {}
+    old_norm  = body.get('old_norm', '').strip()
+    new_disp  = body.get('new_display', '').strip()
+    if not old_norm or not new_disp:
+        return jsonify({'error': 'Missing data'}), 400
+    
+    from database import edit_user_hashtag
+    ok = edit_user_hashtag(uid, old_norm, new_disp)
+    if ok:
+        return jsonify({'success': True})
+    return jsonify({'error': 'Failed to edit hashtag'}), 500

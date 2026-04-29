@@ -53,7 +53,7 @@ def scrape_url(url):
         main = soup.find('article') or soup.find('main') or soup.find(id='content') or soup.find('body')
         raw_text = main.get_text(separator='\n', strip=True) if main else ''
 
-        lines = [l.strip() for l in raw_text.splitlines() if len(l.strip()) > 40]
+        lines = [l.strip() for l in raw_text.splitlines() if len(l.strip()) > 0]
         text_content = '\n'.join(lines)[:6000]
 
         domain = urlparse(url).netloc

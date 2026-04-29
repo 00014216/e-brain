@@ -79,10 +79,15 @@ def get_memories(user_id, search=None, hashtag=None, entity_id=None,
                 s in (r.get('ai_summary') or '')]
 
     if hashtag:
-        norm = normalize_hashtag(hashtag)
-        canonical = _resolve_canonical(db, norm)
-        rows = [r for r in rows if
-                any(_ht(mh) == canonical for mh in r.get('memory_hashtags', []))]
+        tags = [t.strip() for t in hashtag.split(',')]
+        canon_set = {_resolve_canonical(db, normalize_hashtag(t)) for t in tags if t}
+        
+        filtered_rows = []
+        for r in rows:
+            mem_tags = {_ht(mh) for mh in r.get('memory_hashtags', [])}
+            if canon_set.issubset(mem_tags):
+                filtered_rows.append(r)
+        rows = filtered_rows
 
     if entity_id:
         rows = [r for r in rows if
@@ -207,6 +212,36 @@ def add_hashtag_alias(canonical_normalized, alias_normalized):
         return False
 
 
+def edit_user_hashtag(user_id, old_norm, new_display):
+    db = get_client()
+    new_norm = normalize_hashtag(new_display)
+    if not new_norm: return False
+    
+    old_res = db.table('hashtags').select('id').eq('normalized_form', old_norm).execute()
+    if not old_res.data: return False
+    old_hid = old_res.data[0]['id']
+
+    if old_norm == new_norm:
+        db.table('hashtags').update({'display_form': new_display}).eq('id', old_hid).execute()
+        return True
+
+    new_hid = get_or_create_hashtag(db, new_norm, new_display)
+    if not new_hid: return False
+
+    mems = db.table('memories').select('id').eq('user_id', user_id).execute()
+    if mems.data:
+        mids = [m['id'] for m in mems.data]
+        mh_res = db.table('memory_hashtags').select('memory_id').eq('hashtag_id', old_hid).in_('memory_id', mids).execute()
+        for mh in (mh_res.data or []):
+            mid = mh['memory_id']
+            try:
+                db.table('memory_hashtags').insert({'memory_id': mid, 'hashtag_id': new_hid}).execute()
+            except Exception:
+                pass
+            db.table('memory_hashtags').delete().eq('memory_id', mid).eq('hashtag_id', old_hid).execute()
+    return True
+
+
 #entities
 
 def get_or_create_entity(db, user_id, entity_type, name):
@@ -294,8 +329,11 @@ def get_analytics(user_id):
 
     sorted_days = sorted(daily.items())[-30:]
 
-    top_hashtags = get_hashtags_for_user(user_id)[:10]
-    top_entities = get_entities(user_id)[:10]
+    all_hashtags = get_hashtags_for_user(user_id)
+    all_entities = get_entities(user_id)
+    
+    top_hashtags = all_hashtags[:10]
+    top_entities = all_entities[:10]
 
     return {
         'total':           total,
@@ -306,6 +344,8 @@ def get_analytics(user_id):
         'daily_activity':  sorted_days,
         'top_hashtags':    top_hashtags,
         'top_entities':    top_entities,
+        'total_hashtags':  len(all_hashtags),
+        'total_entities':  len(all_entities),
     }
 
 
@@ -324,6 +364,7 @@ def save_settings(user_id, data):
         'display_name':      data.get('display_name', ''),
         'anthropic_api_key': data.get('anthropic_api_key', ''),
         'openai_api_key':    data.get('openai_api_key', ''),
+        'preferences':       data.get('preferences', {}),
         'updated_at':        datetime.utcnow().isoformat(),
     }
     ex = db.table('user_settings').select('user_id').eq('user_id', user_id).execute()
@@ -331,3 +372,42 @@ def save_settings(user_id, data):
         db.table('user_settings').update(payload).eq('user_id', user_id).execute()
     else:
         db.table('user_settings').insert(payload).execute()
+
+
+# AI Chat Conversations
+
+def get_conversations(user_id):
+    db = get_client()
+    r = db.table('ai_conversations').select('id,title,created_at,updated_at').eq('user_id', user_id).order('updated_at', desc=True).execute()
+    return r.data or []
+
+
+def get_conversation(user_id, conv_id):
+    db = get_client()
+    r = db.table('ai_conversations').select('*').eq('user_id', user_id).eq('id', conv_id).execute()
+    return r.data[0] if r.data else None
+
+
+def create_conversation(user_id, title, initial_messages):
+    db = get_client()
+    r = db.table('ai_conversations').insert({
+        'user_id': user_id,
+        'title': title,
+        'messages': initial_messages
+    }).execute()
+    return r.data[0] if r.data else None
+
+
+def append_to_conversation(user_id, conv_id, msgs_to_add):
+    db = get_client()
+    ex = get_conversation(user_id, conv_id)
+    if not ex:
+        return None
+    msgs = ex.get('messages', [])
+    msgs.extend(msgs_to_add)
+    r = db.table('ai_conversations').update({
+        'messages': msgs,
+        'updated_at': datetime.utcnow().isoformat()
+    }).eq('id', conv_id).eq('user_id', user_id).execute()
+    return r.data[0] if r.data else None
+

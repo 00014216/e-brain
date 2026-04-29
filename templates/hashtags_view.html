@@ -1,3 +1,4 @@
+<!-- hashtags_view.html -->
 {% extends 'base.html' %}
 {% block title %}Hashtags — e-brain{% endblock %}
 
@@ -19,11 +20,16 @@
 {% if hashtags %}
 <div class="hashtag-cloud" id="tagCloud">
   {% for ht in hashtags %}
-  <button class="tag-cloud-item" data-norm="{{ ht.normalized_form }}"
+  <div class="tag-cloud-item" data-norm="{{ ht.normalized_form }}" id="tag-{{ ht.normalized_form }}"
     style="font-size: {{ [0.75 + ht.count * 0.05, 1.4] | min }}rem;">
-    #{{ ht.display_form }}
+    <span class="tag-text" onclick="toggleTagSelect('{{ ht.normalized_form }}', this.parentElement)">#{{ ht.display_form
+      }}</span>
     <span class="tag-count">{{ ht.count }}</span>
-  </button>
+    <button class="tag-edit-btn" onclick="startTagEdit(event, '{{ ht.normalized_form }}', '{{ ht.display_form }}')"
+      title="Edit Hashtag">
+      <i data-lucide="edit-3"></i>
+    </button>
+  </div>
   {% endfor %}
 </div>
 {% else %}
@@ -53,112 +59,208 @@
 
 {% block scripts %}
 <script>
-document.getElementById('tagSearch').addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  document.querySelectorAll('.tag-cloud-item').forEach(btn => {
-    btn.style.display = btn.dataset.norm.includes(q) ? '' : 'none';
+  document.getElementById('tagSearch').addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.tag-cloud-item').forEach(btn => {
+      btn.style.display = btn.dataset.norm.includes(q) ? '' : 'none';
+    });
   });
-});
 
-document.querySelectorAll('.tag-cloud-item').forEach(btn => {
-  btn.addEventListener('click', () => loadTagMemories(btn.dataset.norm));
-});
+  let selectedTags = new Set();
 
-async function loadTagMemories(tag) {
-  const wrap = document.getElementById('tagMemoriesWrap');
-  const grid = document.getElementById('tagMemoriesGrid');
-  document.getElementById('activeTagName').textContent = `#${tag}`;
-  grid.innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
-  wrap.classList.remove('hidden');
-  lucide.createIcons();
-  wrap.scrollIntoView({ behavior: 'smooth' });
-
-  const r    = await fetch(`/api/hashtags/memories?tag=${encodeURIComponent(tag)}`);
-  const data = await r.json();
-  const mems = data.memories || [];
-
-  grid.innerHTML = '';
-  if (!mems.length) {
-    grid.innerHTML = '<p class="empty-hint">No memories with this tag.</p>';
-    return;
+  function toggleTagSelect(norm, el) {
+    if (selectedTags.has(norm)) {
+      selectedTags.delete(norm);
+      el.classList.remove('active');
+      el.style.background = '';
+      el.style.color = '';
+      el.style.borderColor = '';
+    } else {
+      selectedTags.add(norm);
+      el.classList.add('active');
+      el.style.background = 'var(--accent-glow)';
+      el.style.color = 'var(--accent)';
+      el.style.borderColor = 'var(--accent)';
+    }
+    if (selectedTags.size === 0) {
+      closeTagView();
+    } else {
+      loadTagMemories(Array.from(selectedTags));
+    }
   }
-  mems.forEach(m => grid.insertAdjacentHTML('beforeend', memCard(m)));
-  lucide.createIcons();
-}
 
-function closeTagView() {
-  document.getElementById('tagMemoriesWrap').classList.add('hidden');
-}
+  function startTagEdit(event, norm, display) {
+    event.stopPropagation();
+    const container = document.getElementById('tag-' + norm);
+    if (!container) return;
+    // Save original content for cancel
+    container._origHTML = container.innerHTML;
+    container.innerHTML = `
+      <input class="tag-edit-input" id="edit-input-${norm}" value="${display}" />
+      <button class="tag-save-btn" onclick="saveTagEdit(event, '${norm}')" title="Save">
+        <i data-lucide="check"></i>
+      </button>
+      <button class="tag-cancel-btn" onclick="cancelTagEdit(event, '${norm}')" title="Cancel">
+        <i data-lucide="x"></i>
+      </button>`;
+    lucide.createIcons();
+    document.getElementById('edit-input-' + norm).focus();
+  }
 
-function memCard(m) {
-  const tags = (m.memory_hashtags||[]).slice(0,5)
-    .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>`:'').join('');
-  return `
+  async function saveTagEdit(event, norm) {
+    event.stopPropagation();
+    const inp = document.getElementById('edit-input-' + norm);
+    const newDisplay = (inp ? inp.value : '').trim();
+    if (!newDisplay) return;
+    const r = await fetch('/api/hashtags/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_norm: norm, new_display: newDisplay })
+    });
+    const data = await r.json();
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Failed to rename: ' + (data.error || 'Unknown error'));
+    }
+  }
+
+  function cancelTagEdit(event, norm) {
+    event.stopPropagation();
+    const container = document.getElementById('tag-' + norm);
+    if (container && container._origHTML) {
+      container.innerHTML = container._origHTML;
+      lucide.createIcons();
+    }
+  }
+
+  async function loadTagMemories(tagsArr) {
+    const wrap = document.getElementById('tagMemoriesWrap');
+    const grid = document.getElementById('tagMemoriesGrid');
+
+    document.getElementById('activeTagName').textContent = tagsArr.map(t => `#${t}`).join(', ');
+
+    grid.innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+    wrap.classList.remove('hidden');
+    lucide.createIcons();
+    wrap.scrollIntoView({ behavior: 'smooth' });
+
+    const q = encodeURIComponent(tagsArr.join(','));
+    const r = await fetch(`/api/hashtags/memories?tag=${q}`);
+    const data = await r.json();
+    const mems = data.memories || [];
+
+    grid.innerHTML = '';
+    if (!mems.length) {
+      grid.innerHTML = '<p class="empty-hint">No memories matching all selected tags found.</p>';
+      return;
+    }
+    mems.forEach(m => grid.insertAdjacentHTML('beforeend', memCard(m)));
+    lucide.createIcons();
+  }
+
+  function closeTagView() {
+    document.getElementById('tagMemoriesWrap').classList.add('hidden');
+    selectedTags.clear();
+    document.querySelectorAll('.tag-cloud-item').forEach(btn => {
+      btn.classList.remove('active');
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    });
+  }
+
+  function memCard(m) {
+    const tags = (m.memory_hashtags || []).slice(0, 5)
+      .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>` : '').join('');
+    return `
     <div class="memory-card" onclick="openModal('${m.id}')">
       <div class="card-type type-${m.memory_type}">${m.memory_type}</div>
-      <div class="card-title">${m.title||'Untitled'}</div>
-      <div class="card-summary">${(m.ai_summary||m.content||'').slice(0,120)}...</div>
+      <div class="card-title">${m.title || 'Untitled'}</div>
+      <div class="card-summary">${(m.ai_summary || m.content || '').slice(0, 120)}...</div>
       <div class="card-tags">${tags}</div>
-      <div class="card-date">${(m.created_at||'').slice(0,10)}</div>
+      <div class="card-date">${(m.created_at || '').slice(0, 10)}</div>
     </div>`;
-}
+  }
 
-async function openModal(id) {
-  document.getElementById('memModal').classList.remove('hidden');
-  document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
-  lucide.createIcons();
-  const r = await fetch(`/api/memories/${id}`);
-  const data = await r.json();
-  const m = data.memory;
-  const tags = (m.memory_hashtags||[]).map(mh=>mh.hashtags?`<span class="tag">#${mh.hashtags.display_form}`:``).join('');
-  document.getElementById('modalContent').innerHTML = `
+  async function openModal(id) {
+    document.getElementById('memModal').classList.remove('hidden');
+    document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+    lucide.createIcons();
+    const r = await fetch(`/api/memories/${id}`);
+    const data = await r.json();
+    const m = data.memory;
+    const tags = (m.memory_hashtags || []).map(mh => mh.hashtags ? `<span class="tag">#${mh.hashtags.display_form}` : ``).join('');
+    document.getElementById('modalContent').innerHTML = `
     <div class="modal-type-badge type-${m.memory_type}">${m.memory_type}</div>
-    <h3 class="modal-title">${m.title||'Untitled'}</h3>
-    <div class="modal-date">${(m.created_at||'').slice(0,10)}</div>
-    ${m.ai_summary?`<div class="modal-section"><strong>Summary</strong><p>${m.ai_summary}</p></div>`:''}
-    <div class="modal-section"><strong>Content</strong><p>${(m.content||'').replace(/\n/g,'<br>')}</p></div>
+    <h3 class="modal-title">${m.title || 'Untitled'}</h3>
+    <div class="modal-date">${(m.created_at || '').slice(0, 10)}</div>
+    ${m.ai_summary ? `<div class="modal-section"><strong>Summary</strong><p>${m.ai_summary}</p></div>` : ''}
+    <div class="modal-section"><strong>Content</strong><p>${(m.content || '').replace(/\n/g, '<br>')}</p></div>
     <div class="modal-section"><strong>Hashtags</strong><div class="modal-tags">${tags}</div></div>
     <div class="modal-footer"><a href="/memory/${m.id}" class="btn-sm">Full view</a></div>`;
-  lucide.createIcons();
-}
-function closeModal() { document.getElementById('memModal').classList.add('hidden'); }
+    lucide.createIcons();
+  }
+  function closeModal() { document.getElementById('memModal').classList.add('hidden'); }
 
-document.getElementById('suggestAliasesBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('suggestAliasesBtn');
-  btn.disabled = true; btn.textContent = 'Analyzing...';
-  const r = await fetch('/api/hashtags/suggest-aliases', { method: 'POST' });
-  const data = await r.json();
-  btn.disabled = false; btn.innerHTML = '<i data-lucide="wand-2"></i> Suggest Aliases';
-  lucide.createIcons();
+  document.getElementById('suggestAliasesBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('suggestAliasesBtn');
+    btn.disabled = true; btn.textContent = 'Analyzing...';
+    const r = await fetch('/api/hashtags/suggest-aliases', { method: 'POST' });
+    const data = await r.json();
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="wand-2"></i> Suggest Aliases';
+    lucide.createIcons();
 
-  const panel = document.getElementById('aliasPanel');
-  const suggestions = data.suggestions || [];
-  if (!suggestions.length) {
-    panel.innerHTML = '<p class="empty-hint">No alias suggestions. Your hashtags look consistent.</p>';
-  } else {
-    panel.innerHTML = `<h4>Suggested Aliases</h4>
-      <p class="page-sub">These hashtags appear to mean the same thing. Apply aliases to connect them.</p>` +
-      suggestions.map(s => `
-        <div class="alias-row">
-          <strong>${s.canonical}</strong> ← ${(s.aliases||[]).join(', ')}
-          ${(s.aliases||[]).map(a => `
-            <button class="btn-sm" onclick="applyAlias('${s.canonical}','${a}',this)">
+    const panel = document.getElementById('aliasPanel');
+    const suggestions = data.suggestions || [];
+    if (!suggestions.length) {
+      panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <p class="empty-hint">No alias suggestions. Your hashtags look consistent.</p>
+          <button class="btn-ghost-sm" onclick="document.getElementById('aliasPanel').classList.add('hidden')"><i data-lucide="x"></i></button>
+        </div>`;
+    } else {
+      panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div>
+            <h4>Suggested Aliases</h4>
+            <p class="page-sub" style="margin:0;">These hashtags appear to mean the same thing. Apply aliases to connect them.</p>
+          </div>
+          <button class="btn-ghost-sm" onclick="document.getElementById('aliasPanel').classList.add('hidden')"><i data-lucide="x"></i> Close</button>
+        </div>` +
+        suggestions.map(s => `
+        <div class="alias-row" id="alias-row-${s.canonical}">
+          <strong>${s.canonical}</strong> ← ${(s.aliases || []).join(', ')}
+          ${(s.aliases || []).map(a => `
+            <button class="btn-sm" id="alias-btn-${s.canonical}-${a}" onclick="applyAlias('${s.canonical}','${a}',this)">
               Link #${a} → #${s.canonical}
             </button>`).join('')}
         </div>`).join('');
-  }
-  panel.classList.remove('hidden');
-});
-
-async function applyAlias(canonical, alias, btn) {
-  btn.disabled = true;
-  const r = await fetch('/api/hashtags/add-alias', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ canonical, alias })
+    }
+    panel.classList.remove('hidden');
+    lucide.createIcons();
   });
-  const data = await r.json();
-  btn.textContent = data.success ? 'Linked!' : 'Failed';
-}
+
+  async function applyAlias(canonical, alias, btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    const r = await fetch('/api/hashtags/add-alias', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canonical, alias })
+    });
+    const data = await r.json();
+    if (data.success) {
+      btn.style.display = 'none';
+      // If all buttons in row are now hidden, hide the whole row
+      const row = btn.closest('.alias-row');
+      if (row && [...row.querySelectorAll('.btn-sm')].every(b => b.style.display === 'none')) {
+        row.style.opacity = '0.4';
+        row.innerHTML += ' <em style="color:var(--success);font-size:12px">✓ All linked</em>';
+      }
+    } else {
+      btn.textContent = 'Failed';
+    }
+  }
 </script>
 {% endblock %}

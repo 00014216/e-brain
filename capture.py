@@ -5,7 +5,7 @@ from utils import login_required, allowed_file
 from database import create_memory, get_memories, get_settings
 from ai_client import analyze_content
 from url_scraper import scrape_url
-from image_handler import save_upload, resize_for_storage
+from image_handler import save_upload, resize_for_storage, upload_to_supabase
 from config import UPLOAD_FOLDER
 
 capture_bp = Blueprint('capture', __name__)
@@ -27,11 +27,13 @@ def api_capture():
     source_url  = request.form.get('source_url', '').strip()
     memory_type = request.form.get('memory_type', 'text')
     user_note   = request.form.get('user_note', '').strip()
+    url_note    = request.form.get('url_note', '').strip()
 
     settings    = get_settings(uid)
     api_key     = settings.get('openai_api_key') or None
 
     image_path  = None
+    public_image_url = None
 
     if 'image' in request.files:
         file = request.files['image']
@@ -42,19 +44,28 @@ def api_capture():
             resize_for_storage(path)
             image_path  = path
             memory_type = 'image' if memory_type == 'text' else memory_type
+            
+            # Upload to Supabase Storage
+            public_image_url = upload_to_supabase(path)
+            # We keep image_path for analyze_content to use local file for base64
+            # We will delete it after create_memory
 
-    if source_url and not content and not image_path:
+    if source_url and not image_path:
         scraped     = scrape_url(source_url)
         memory_type = 'url'
-        content = (
+        scraped_content = (
             f"URL: {scraped['url']}\n"
             f"Title: {scraped['title']}\n"
             f"Author: {scraped['author']}\n"
             f"Published: {scraped['pub_date']}\n\n"
-            f"{scraped['content']}"
+            f"{scraped.get('content', '')}"
         )
-    elif source_url and content:
-        content = f"[Source: {source_url}]\n\n{content}"
+        
+        actual_note = url_note if url_note else content
+        if actual_note:
+            content = f"{scraped_content}\n\n[User note]: {actual_note}"
+        else:
+            content = scraped_content
 
     if user_note:
         content = f"{content}\n\n[User note]: {user_note}" if content else f"[User note]: {user_note}"
@@ -80,7 +91,8 @@ def api_capture():
         'source_url':   source_url,
         'source_title': analysis.get('title', ''),
         'title':        analysis.get('title', ''),
-        'image_path':   image_path or '',
+        'image_url':    public_image_url or '', # Store public URL as image_url
+        'image_path':   image_path or '',       # Fallback/ref for local (will be deleted)
         'ai_summary':   analysis.get('summary', ''),
         'hashtags':     analysis.get('hashtags', []),
         'entities':     analysis.get('entities', []),
@@ -90,6 +102,14 @@ def api_capture():
     }
 
     saved = create_memory(uid, data)
+    
+    # Cleanup local image file after upload and analysis
+    if image_path and os.path.exists(image_path):
+        try:
+            os.remove(image_path)
+        except Exception:
+            pass
+
     if saved:
         return jsonify({
             'success':  True,

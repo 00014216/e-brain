@@ -12,10 +12,14 @@ def settings_page():
     current  = get_settings(uid)
 
     if request.method == 'POST':
+        prefs = current.get('preferences') or {}
+        prefs['ai_persona'] = request.form.get('ai_persona', 'default')
+        
         data = {
             'display_name':      request.form.get('display_name', '').strip(),
             'anthropic_api_key': request.form.get('anthropic_api_key', '').strip(),
             'openai_api_key':    request.form.get('openai_api_key', '').strip(),
+            'preferences':       prefs
         }
         save_settings(uid, data)
         flash('Settings saved.', 'success')

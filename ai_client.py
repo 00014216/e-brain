@@ -28,30 +28,50 @@ def analyze_content(content, memory_type='text', source_url=None, image_path=Non
 
     system = (
         'You are the analysis engine for e-brain, a personal memory and knowledge capture app. '
-        'Extract structured information from the given content. '
+        'Your purpose is to help the user build a connected second brain — discovering relationships, entities, and patterns across their memories over months and years.\n\n'
         'Return ONLY valid JSON — no explanation, no markdown fences.\n\n'
         'JSON shape:\n'
         '{\n'
         '  "title": "short title, 6 words max",\n'
         '  "summary": "2-3 sentences capturing all key information",\n'
-        '  "hashtags": ["lowercase","no","hash","symbol","8-15","tags"],\n'
+        '  "hashtags": ["lowercase","no","hash","symbol","20-35","tags"],\n'
         '  "entities": [{"type":"person|company|technology|concept|location|event","name":"Full Name"}],\n'
         '  "sentiment": "positive|negative|neutral|mixed",\n'
         '  "key_insights": ["insight 1","insight 2"],\n'
         '  "action_items": ["action if any"]\n'
         '}\n\n'
+        'CRITICAL — User Note Priority:\n'
+        '- If the content contains a [User note] section, treat it as the HIGHEST PRIORITY signal. It is the user explicitly telling you WHY they saved this, what it means to THEM, and what connections they want to make.\n'
+        '- Any entity, company, person, or concept mentioned in the [User note] MUST appear in both `entities` and `hashtags`, no exceptions.\n'
+        '- If the user note establishes a relationship (e.g., "this is a competitor for X", "related to project Y", "relevant to Z"), you MUST extract X, Y, and Z as entities and add hashtags for them.\n'
+        '- The `summary` MUST incorporate the user\'s perspective from the note, not just describe the raw content.\n\n'
         'Hashtag rules:\n'
         '- All lowercase, no spaces, no # symbol, only letters and digits\n'
         '- Be specific and comprehensive: include topic, category, industry, entity, context tags\n'
-        '- Minimum 8, ideally 12-15 hashtags\n'
-        '- Examples: venturecapital, deeptech, startup, learning, businessidea, technology\n\n'
+        '- Minimum 12, ideally 20-35 hashtags\n'
+        '- For every entity or proper noun mentioned in the [User note], create a hashtag from it (e.g., if note mentions " Project Alpha\, add \projectalpha\).\n\n'
+        'Entity rules:\n'
+        '- Be extremely exhaustive. Extract EVERY single company, startup, person, or technology mentioned anywhere in the content, especially in [User note].\n'
+        '- Do not miss any proper nouns that represent business entities.\n\n'
+        'Content rules:\n'
+        '- DO NOT simply repeat the original text. You are an expert analyst. SYNTHESIZE and ENRICH.\n'
+        '- `summary`: If a company, product, or technology is mentioned, use your broad internal knowledge to ADD context (founders, products, market position).\n'
+        '- `key_insights`: Provide deep analytical insights using your external knowledge. Do not rephrase the summary.\n'
+        '- `action_items`: Extract explicit tasks or infer HIGH-VALUE logical next steps the user should take.\n\n'
         'Return ONLY the JSON object.'
     )
 
+    # Extract the user note to highlight it explicitly
+    note_section = ''
+    if '[User note]:' in (content or ''):
+        parts = content.split('[User note]:')
+        note_section = f'\n\nUSER\'S OWN NOTE (HIGHEST PRIORITY):\n{parts[-1].strip()}'
+    
     user_text = (
         f'Memory type: {memory_type}\n'
         f'{("Source URL: " + source_url) if source_url else ""}\n\n'
         f'Content:\n{content}'
+        f'{note_section}'
     )
 
     messages = [{'role': 'system', 'content': system}]
@@ -138,7 +158,7 @@ def extract_search_params(query, api_key=None):
     }
 
 
-def rank_memories(query, candidates, api_key=None):
+def rank_memories(query, candidates, api_key=None, persona='default'):
     client = _client(api_key)
     if not candidates:
         return {'relevant_ids': [], 'explanation': 'No memories in database yet.', 'confidence': 'low'}
@@ -156,16 +176,25 @@ def rank_memories(query, candidates, api_key=None):
             f"Entities: {', '.join(en_names)}"
         )
 
+    persona_map = {
+        'default': 'Respond normally, be helpful and focused. 2-3 sentences.',
+        'jarvis': 'Act like J.A.R.V.I.S. from Iron Man. Be highly analytical, slightly sarcastic, dry, and address the user politely but with witty, robotic condescension.',
+        'short': 'Be extremely direct and brief. Maximum 1 sentence. No pleasantries.',
+        'detailed': 'Be highly detailed, structured, and analytical. Extensively explain precisely why these memories match the query in a long paragraph.'
+    }
+    tone_instr = persona_map.get(persona, persona_map['default'])
+
     prompt = (
         f'You are searching a personal memory database.\n\n'
         f'User query: "{query}"\n\n'
         f'Memories:\n{"---".join(blocks)}\n\n'
-        f'Find memories that match semantically, not just by exact words. '
-        f'Consider vague references, related concepts, date hints, entity hints.\n\n'
+        f'Your goal is to decipher the core intent behind the user\'s query, especially if it is vague.\n'
+        f'Often, users will ask vague questions like "I remember seeing something about X...". You must find the memories that satisfy the true intent of their search.\n'
+        f'CRITICAL RULE: Return ONLY the IDs of memories that directly solve the user\'s semantic intent. If a memory shares keywords (e.g., the same company name) but does NOT satisfy the goal of the query, EXCLUDE IT completely. Be precise and restrictive.\n\n'
         f'Return a JSON object:\n'
         f'{{\n'
         f'  "relevant_ids": ["most-relevant-id-first","..."],\n'
-        f'  "explanation": "2-3 sentences about what was found and why",\n'
+        f'  "explanation": "Your response to the user outlining what you found. {tone_instr}",\n'
         f'  "search_terms_used": ["terms","used"],\n'
         f'  "confidence": "high|medium|low"\n'
         f'}}'
@@ -216,3 +245,4 @@ def suggest_hashtag_aliases(hashtag_list, api_key=None):
     except Exception as e:
         print(f'OpenAI alias error: {e}')
     return []
+

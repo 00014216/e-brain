@@ -61,6 +61,30 @@ def api_delete_memory(memory_id):
     return jsonify({'error': 'Could not delete memory'}), 404
 
 
+@memories_bp.route('/api/memories/<memory_id>/add-hashtag', methods=['POST'])
+@login_required
+def api_add_hashtag_to_memory(memory_id):
+    uid  = session['user_id']
+    body = request.get_json() or {}
+    tag  = (body.get('hashtag') or '').strip().lstrip('#')
+    if not tag:
+        return jsonify({'error': 'Hashtag required'}), 400
+    mem = get_memory(uid, memory_id)
+    if not mem:
+        return jsonify({'error': 'Memory not found'}), 404
+    from database import get_client, get_or_create_hashtag, normalize_hashtag
+    db   = get_client()
+    norm = normalize_hashtag(tag)
+    hid  = get_or_create_hashtag(db, norm, tag)
+    if not hid:
+        return jsonify({'error': 'Could not create hashtag'}), 500
+    try:
+        db.table('memory_hashtags').insert({'memory_id': memory_id, 'hashtag_id': hid}).execute()
+    except Exception:
+        pass  # already linked
+    return jsonify({'success': True, 'normalized': norm, 'display': tag})
+
+
 @memories_bp.route('/memory/<memory_id>')
 @login_required
 def memory_detail_page(memory_id):

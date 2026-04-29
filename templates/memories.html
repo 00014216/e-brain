@@ -1,3 +1,4 @@
+<!-- memories.html -->
 {% extends 'base.html' %}
 {% block title %}Memories — e-brain{% endblock %}
 
@@ -31,7 +32,7 @@
     </select>
 
     <input type="date" id="dateFrom" title="From date">
-    <input type="date" id="dateTo"   title="To date">
+    <input type="date" id="dateTo" title="To date">
     <button id="clearFilters" class="btn-ghost-sm">Clear</button>
   </div>
 </div>
@@ -54,68 +55,68 @@
 
 {% block scripts %}
 <script>
-let offset = 0, loading = false, allLoaded = false;
-const LIMIT = 20;
+  let offset = 0, loading = false, allLoaded = false;
+  const LIMIT = 20;
 
-async function loadMemories(reset = false) {
-  if (loading) return;
-  loading = true;
-  if (reset) { offset = 0; allLoaded = false; document.getElementById('memoriesGrid').innerHTML = ''; }
+  async function loadMemories(reset = false) {
+    if (loading) return;
+    loading = true;
+    if (reset) { offset = 0; allLoaded = false; document.getElementById('memoriesGrid').innerHTML = ''; }
 
-  const params = new URLSearchParams({
-    search:   document.getElementById('searchInput').value.trim(),
-    type:     document.getElementById('typeFilter').value,
-    hashtag:  document.getElementById('hashtagFilter').value,
-    date_from:document.getElementById('dateFrom').value,
-    date_to:  document.getElementById('dateTo').value,
-    limit:    LIMIT,
-    offset:   offset,
-  });
+    const params = new URLSearchParams({
+      search: document.getElementById('searchInput').value.trim(),
+      type: document.getElementById('typeFilter').value,
+      hashtag: document.getElementById('hashtagFilter').value,
+      date_from: document.getElementById('dateFrom').value,
+      date_to: document.getElementById('dateTo').value,
+      limit: LIMIT,
+      offset: offset,
+    });
 
-  const r    = await fetch('/api/memories?' + params);
-  const data = await r.json();
-  const mems = data.memories || [];
+    const r = await fetch('/api/memories?' + params);
+    const data = await r.json();
+    const mems = data.memories || [];
 
-  const grid = document.getElementById('memoriesGrid');
+    const grid = document.getElementById('memoriesGrid');
 
-  if (reset && mems.length === 0) {
-    grid.innerHTML = '<div class="empty-state"><i data-lucide="brain"></i><p>No memories found.</p></div>';
-    document.getElementById('memoryCount').textContent = '';
+    if (reset && mems.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><i data-lucide="brain"></i><p>No memories found.</p></div>';
+      document.getElementById('memoryCount').textContent = '';
+      lucide.createIcons();
+      loading = false;
+      return;
+    }
+
+    if (reset) {
+      document.getElementById('memoryCount').textContent = `Showing ${mems.length} memories`;
+    }
+
+    mems.forEach(m => grid.insertAdjacentHTML('beforeend', memoryCard(m)));
     lucide.createIcons();
+
+    offset += mems.length;
+    if (mems.length < LIMIT) {
+      allLoaded = true;
+      document.getElementById('loadMoreWrap').classList.add('hidden');
+    } else {
+      document.getElementById('loadMoreWrap').classList.remove('hidden');
+    }
+
     loading = false;
-    return;
   }
 
-  if (reset) {
-    document.getElementById('memoryCount').textContent = `Showing ${mems.length} memories`;
-  }
+  function memoryCard(m) {
+    const tags = (m.memory_hashtags || [])
+      .slice(0, 5)
+      .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>` : '')
+      .join('');
 
-  mems.forEach(m => grid.insertAdjacentHTML('beforeend', memoryCard(m)));
-  lucide.createIcons();
+    const sentimentClass = { positive: 'sent-pos', negative: 'sent-neg', neutral: 'sent-neu', mixed: 'sent-mix' }[m.sentiment] || 'sent-neu';
+    const typeIcon = { text: 'type', note: 'sticky-note', url: 'link-2', image: 'image', screenshot: 'monitor' }[m.memory_type] || 'file';
 
-  offset += mems.length;
-  if (mems.length < LIMIT) {
-    allLoaded = true;
-    document.getElementById('loadMoreWrap').classList.add('hidden');
-  } else {
-    document.getElementById('loadMoreWrap').classList.remove('hidden');
-  }
+    const img = m.image_url ? `<div class="card-img"><img src="${m.image_url}" alt=""></div>` : '';
 
-  loading = false;
-}
-
-function memoryCard(m) {
-  const tags = (m.memory_hashtags || [])
-    .slice(0, 5)
-    .map(mh => mh.hashtags ? `<span class="tag-sm">#${mh.hashtags.display_form}</span>` : '')
-    .join('');
-
-  const sentimentClass = { positive: 'sent-pos', negative: 'sent-neg', neutral: 'sent-neu', mixed: 'sent-mix' }[m.sentiment] || 'sent-neu';
-  const typeIcon = { text: 'type', note: 'sticky-note', url: 'link-2', image: 'image', screenshot: 'monitor' }[m.memory_type] || 'file';
-
-  const img = m.image_url ? `<div class="card-img"><img src="${m.image_url}" alt=""></div>` : '';
-
-  return `
+    return `
     <div class="memory-card" onclick="openModal('${m.id}')">
       <div class="card-header">
         <span class="card-type type-${m.memory_type}"><i data-lucide="${typeIcon}"></i> ${m.memory_type}</span>
@@ -128,79 +129,105 @@ function memoryCard(m) {
       <div class="card-title">${m.title || 'Untitled'}</div>
       <div class="card-summary">${(m.ai_summary || m.content || '').slice(0, 140)}...</div>
       <div class="card-tags">${tags}</div>
-      <div class="card-date">${m.created_at ? m.created_at.slice(0,10) : ''}</div>
+      <div class="card-date">${m.created_at ? m.created_at.slice(0, 10) : ''}</div>
     </div>`;
-}
+  }
 
-async function openModal(id) {
-  document.getElementById('memModal').classList.remove('hidden');
-  document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
-  lucide.createIcons();
+  async function openModal(id) {
+    document.getElementById('memModal').classList.remove('hidden');
+    document.getElementById('modalContent').innerHTML = '<div class="modal-loading"><i data-lucide="loader-2"></i></div>';
+    lucide.createIcons();
 
-  const r    = await fetch(`/api/memories/${id}`);
-  const data = await r.json();
-  const m    = data.memory;
+    const r = await fetch(`/api/memories/${id}`);
+    const data = await r.json();
+    const m = data.memory;
 
-  const tags = (m.memory_hashtags || [])
-    .map(mh => mh.hashtags ? `<span class="tag">#${mh.hashtags.display_form}</span>` : '').join('');
+    const tags = (m.memory_hashtags || [])
+      .map(mh => mh.hashtags ? `<span class="tag">#${mh.hashtags.display_form}</span>` : '').join('');
 
-  const entities = (m.memory_entities || [])
-    .map(me => me.entities ? `<span class="entity-chip entity-${me.entities.entity_type}">${me.entities.name}</span>` : '').join('');
+    const entities = (m.memory_entities || [])
+      .map(me => me.entities ? `<span class="entity-chip entity-${me.entities.entity_type}">${me.entities.name}</span>` : '').join('');
 
-  const insights = (m.key_insights || []).map(i => `<li>${i}</li>`).join('');
-  const actions  = (m.action_items  || []).filter(Boolean).map(a => `<li>${a}</li>`).join('');
-  const imgHtml  = m.image_url ? `<img class="modal-img" src="${m.image_url}" alt="">` : '';
-  const urlHtml  = m.source_url ? `<a class="modal-url" href="${m.source_url}" target="_blank">${m.source_url}</a>` : '';
+    const insights = (m.key_insights || []).map(i => `<li>${i}</li>`).join('');
+    const actions = (m.action_items || []).filter(Boolean).map(a => `<li>${a}</li>`).join('');
+    const imgHtml = m.image_url ? `<img class="modal-img" src="${m.image_url}" alt="">` : '';
+    const urlHtml = m.source_url ? `<a class="modal-url" href="${m.source_url}" target="_blank">${m.source_url}</a>` : '';
 
-  document.getElementById('modalContent').innerHTML = `
+    document.getElementById('modalContent').innerHTML = `
     <div class="modal-type-badge type-${m.memory_type}">${m.memory_type}</div>
     <h3 class="modal-title">${m.title || 'Untitled'}</h3>
-    <div class="modal-date">${m.created_at ? m.created_at.slice(0,16).replace('T',' ') : ''}</div>
+    <div class="modal-date">${m.created_at ? m.created_at.slice(0, 16).replace('T', ' ') : ''}</div>
     ${urlHtml}
     ${imgHtml}
     ${m.ai_summary ? `<div class="modal-section"><strong>AI Summary</strong><p>${m.ai_summary}</p></div>` : ''}
-    <div class="modal-section"><strong>Content</strong><p class="modal-content-text">${(m.content||'').replace(/\n/g,'<br>')}</p></div>
+    <div class="modal-section"><strong>Content</strong><p class="modal-content-text">${(m.content || '').replace(/\n/g, '<br>')}</p></div>
     ${insights ? `<div class="modal-section"><strong>Key Insights</strong><ul>${insights}</ul></div>` : ''}
-    ${actions  ? `<div class="modal-section"><strong>Action Items</strong><ul>${actions}</ul></div>`  : ''}
-    ${tags     ? `<div class="modal-section"><strong>Hashtags</strong><div class="modal-tags">${tags}</div></div>` : ''}
+    ${actions ? `<div class="modal-section"><strong>Action Items</strong><ul>${actions}</ul></div>` : ''}
+    <div class="modal-section">
+      <strong>Hashtags</strong>
+      <div class="modal-tags" id="modal-tags-${m.id}">${tags}</div>
+      <div class="add-tag-row" style="display:flex;gap:6px;margin-top:10px;align-items:center;">
+        <input id="newTagInput-${m.id}" class="tag-edit-input" style="width:160px;" placeholder="Add hashtag..." />
+        <button class="btn-sm" onclick="addTagToMemory('${m.id}')"><i data-lucide="plus"></i> Add</button>
+      </div>
+    </div>
     ${entities ? `<div class="modal-section"><strong>Entities</strong><div class="modal-entities">${entities}</div></div>` : ''}
     <div class="modal-footer">
       <a href="/memory/${m.id}" class="btn-sm">Full view</a>
       <button class="btn-sm btn-danger" onclick="deleteMem('${m.id}', null, true)">Delete</button>
     </div>`;
-  lucide.createIcons();
-}
-
-function closeModal() {
-  document.getElementById('memModal').classList.add('hidden');
-}
-
-async function deleteMem(id, el, fromModal) {
-  if (!confirm('Delete this memory permanently?')) return;
-  const r = await fetch(`/api/memories/${id}`, { method: 'DELETE' });
-  if (r.ok) {
-    if (fromModal) closeModal();
-    loadMemories(true);
+    lucide.createIcons();
   }
-}
 
-let debounce;
-['searchInput','typeFilter','hashtagFilter','dateFrom','dateTo'].forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => loadMemories(true), 400);
-  });
-});
+  async function addTagToMemory(memId) {
+    const inp = document.getElementById(`newTagInput-${memId}`);
+    const tag = (inp ? inp.value : '').trim().replace(/^#/, '');
+    if (!tag) return;
+    inp.disabled = true;
+    const r = await fetch(`/api/memories/${memId}/add-hashtag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hashtag: tag })
+    });
+    const data = await r.json();
+    if (data.success) {
+      const tagsDiv = document.getElementById(`modal-tags-${memId}`);
+      if (tagsDiv) tagsDiv.insertAdjacentHTML('beforeend', `<span class="tag">#${data.display}</span>`);
+      inp.value = '';
+    }
+    inp.disabled = false;
+  }
 
-document.getElementById('clearFilters').addEventListener('click', () => {
-  ['searchInput','typeFilter','hashtagFilter','dateFrom','dateTo'].forEach(id => {
-    document.getElementById(id).value = '';
+  function closeModal() {
+    document.getElementById('memModal').classList.add('hidden');
+  }
+
+  async function deleteMem(id, el, fromModal) {
+    if (!confirm('Delete this memory permanently?')) return;
+    const r = await fetch(`/api/memories/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      if (fromModal) closeModal();
+      loadMemories(true);
+    }
+  }
+
+  let debounce;
+  ['searchInput', 'typeFilter', 'hashtagFilter', 'dateFrom', 'dateTo'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => loadMemories(true), 400);
+    });
   });
+
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    ['searchInput', 'typeFilter', 'hashtagFilter', 'dateFrom', 'dateTo'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    loadMemories(true);
+  });
+
+  document.getElementById('loadMoreBtn').addEventListener('click', () => loadMemories(false));
+
   loadMemories(true);
-});
-
-document.getElementById('loadMoreBtn').addEventListener('click', () => loadMemories(false));
-
-loadMemories(true);
 </script>
 {% endblock %}

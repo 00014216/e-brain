@@ -1,3 +1,4 @@
+<!-- analytics.html -->
 {% extends 'base.html' %}
 {% block title %}Analytics — e-brain{% endblock %}
 
@@ -21,11 +22,11 @@
     <div class="stat-label">Last 30 Days</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number">{{ data.top_hashtags | length }}</div>
+    <div class="stat-number">{{ data.total_hashtags }}</div>
     <div class="stat-label">Unique Hashtags</div>
   </div>
   <div class="stat-card">
-    <div class="stat-number">{{ data.top_entities | length }}</div>
+    <div class="stat-number">{{ data.total_entities }}</div>
     <div class="stat-label">Entities Tracked</div>
   </div>
 </div>
