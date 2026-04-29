@@ -35,3 +35,10 @@ desktop.ini
 
 # Flask sessions
 flask_session/
+
+# VIVA prep documents
+viva-prep*.md
+
+# Local setup/test scripts
+setup_*.py
+test_*.py
