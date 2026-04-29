@@ -34,12 +34,18 @@ def analyze_content(content, memory_type='text', source_url=None, image_path=Non
         '{\n'
         '  "title": "short title, 6 words max",\n'
         '  "summary": "2-3 sentences capturing all key information",\n'
+        '  "extracted_text": "VERBATIM copy of every word visible in the image/screenshot. Preserve line breaks. Empty string if no image.",\n'
         '  "hashtags": ["lowercase","no","hash","symbol","20-35","tags"],\n'
         '  "entities": [{"type":"person|company|technology|concept|location|event","name":"Full Name"}],\n'
         '  "sentiment": "positive|negative|neutral|mixed",\n'
         '  "key_insights": ["insight 1","insight 2"],\n'
         '  "action_items": ["action if any"]\n'
         '}\n\n'
+        'extracted_text rules:\n'
+        '- Copy ALL visible text EXACTLY as it appears — every word, label, button, date, username, heading, paragraph\n'
+        '- Do NOT paraphrase, summarise, or correct — verbatim only\n'
+        '- Preserve structure: use newlines between sections, headings, bullet points\n'
+        '- If content has no image, set extracted_text to ""\n\n'
         'CRITICAL — User Note Priority:\n'
         '- If the content contains a [User note] section, treat it as the HIGHEST PRIORITY signal. It is the user explicitly telling you WHY they saved this, what it means to THEM, and what connections they want to make.\n'
         '- Any entity, company, person, or concept mentioned in the [User note] MUST appear in both `entities` and `hashtags`, no exceptions.\n'
@@ -88,7 +94,7 @@ def analyze_content(content, memory_type='text', source_url=None, image_path=Non
                 'role': 'user',
                 'content': [
                     {'type': 'image_url', 'image_url': {'url': f'data:{media_type};base64,{img_b64}'}},
-                    {'type': 'text', 'text': f'First extract ALL visible text from the image (OCR), then analyze it.\n\n{user_text}'}
+                    {'type': 'text', 'text': f'Step 1: Transcribe EVERY word visible in this image verbatim into extracted_text — preserve layout with newlines. Step 2: Analyze the full content. Fill all JSON fields.\n\n{user_text}'}
                 ]
             })
         except Exception:
@@ -101,7 +107,7 @@ def analyze_content(content, memory_type='text', source_url=None, image_path=Non
             model='gpt-4o',
             messages=messages,
             response_format={'type': 'json_object'},
-            max_tokens=1800,
+            max_tokens=2500,
         )
         result = _parse_json(response.choices[0].message.content)
         if result:

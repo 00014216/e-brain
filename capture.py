@@ -91,9 +91,10 @@ def api_capture():
         'source_url':   source_url,
         'source_title': analysis.get('title', ''),
         'title':        analysis.get('title', ''),
-        'image_url':    public_image_url or '', # Store public URL as image_url
-        'image_path':   image_path or '',       # Fallback/ref for local (will be deleted)
+        'image_url':    public_image_url or '',
+        'image_path':   image_path or '',
         'ai_summary':   analysis.get('summary', ''),
+        'ai_analysis':  analysis,
         'hashtags':     analysis.get('hashtags', []),
         'entities':     analysis.get('entities', []),
         'sentiment':    analysis.get('sentiment', 'neutral'),

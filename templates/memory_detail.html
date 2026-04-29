@@ -34,6 +34,13 @@
     </div>
     {% endif %}
 
+    {% if memory.ai_analysis and memory.ai_analysis.extracted_text %}
+    <div class="detail-section">
+      <div class="section-label">Extracted Text</div>
+      <div class="detail-extracted">{{ memory.ai_analysis.extracted_text | replace('\n', '<br>') | safe }}</div>
+    </div>
+    {% endif %}
+
     {% if memory.ai_summary %}
     <div class="detail-section">
       <div class="section-label">AI Summary</div>
